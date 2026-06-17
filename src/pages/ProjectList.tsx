@@ -67,7 +67,7 @@ export default function ProjectList() {
           </p>
         </div>
         <Link
-          to="/projects/new"
+          to="/projects/create"
           className="flex items-center gap-2 px-5 py-2.5 bg-[#1e3a5f] text-white rounded-xl font-medium hover:bg-[#2d4a6f] hover:shadow-lg hover:shadow-[#1e3a5f]/20 transition-all"
         >
           <Plus size={20} />
@@ -83,7 +83,7 @@ export default function ProjectList() {
           <h3 className="text-xl font-semibold text-slate-700 mb-2">暂无项目</h3>
           <p className="text-slate-500 mb-6">创建您的第一个移民申请项目开始吧</p>
           <Link
-            to="/projects/new"
+            to="/projects/create"
             className="inline-flex items-center gap-2 px-6 py-3 bg-[#d4a855] text-white rounded-xl font-medium hover:bg-[#c49845] transition-colors"
           >
             <Plus size={20} />

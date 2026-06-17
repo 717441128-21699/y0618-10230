@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Globe2, FileText, Briefcase, Users, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Globe2, FileText, Briefcase, Users, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
+import { useToastStore } from '../store/useToastStore';
 import { projectService, templateService } from '../services/api';
 import {
   ApplicationType,
   APPLICATION_TYPE_LABELS,
   CreateProjectRequest,
+  ApplicationTemplate,
 } from '../../shared/types';
-
-const COUNTRIES = ['加拿大', '美国', '澳大利亚', '新西兰', '英国'];
 
 const APPLICATION_TYPES: { value: ApplicationType; label: string; icon: React.ReactNode }[] = [
   { value: 'work_visa', label: '工作签证', icon: <Briefcase size={24} /> },
@@ -23,33 +23,72 @@ export default function CreateProject() {
   const [applicationType, setApplicationType] = useState<ApplicationType | ''>('');
   const [targetCountry, setTargetCountry] = useState('');
   const [loading, setLoading] = useState(false);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [allTemplates, setAllTemplates] = useState<ApplicationTemplate[]>([]);
   const [templatePreview, setTemplatePreview] = useState<any[]>([]);
+  const [hasTemplate, setHasTemplate] = useState<boolean | null>(null);
   const { user } = useAuthStore();
   const navigate = useNavigate();
+  const toast = useToastStore();
+
+  useEffect(() => {
+    loadAllTemplates();
+  }, []);
 
   useEffect(() => {
     if (applicationType && targetCountry) {
-      loadTemplatePreview();
+      checkAndLoadTemplate();
     } else {
       setTemplatePreview([]);
+      setHasTemplate(null);
     }
   }, [applicationType, targetCountry]);
 
-  const loadTemplatePreview = async () => {
+  const loadAllTemplates = async () => {
     try {
+      setTemplatesLoading(true);
+      const templates = await templateService.getTemplates();
+      setAllTemplates(templates);
+    } catch (error) {
+      console.error('Failed to load templates:', error);
+    } finally {
+      setTemplatesLoading(false);
+    }
+  };
+
+  const getAvailableCountries = () => {
+    if (!applicationType) {
+      return [...new Set(allTemplates.map((t) => t.country))];
+    }
+    return [...new Set(allTemplates.filter((t) => t.applicationType === applicationType).map((t) => t.country))];
+  };
+
+  const checkAndLoadTemplate = async () => {
+    try {
+      setTemplatesLoading(true);
       const templates = await templateService.getTemplates(applicationType, targetCountry);
       if (templates.length > 0) {
         setTemplatePreview(templates[0].documents);
+        setHasTemplate(true);
       } else {
         setTemplatePreview([]);
+        setHasTemplate(false);
       }
     } catch (error) {
       console.error('Failed to load template:', error);
+      setHasTemplate(false);
+    } finally {
+      setTemplatesLoading(false);
     }
   };
 
   const handleSubmit = async () => {
     if (!user) return;
+
+    if (hasTemplate === false) {
+      toast.warning(`暂不支持${targetCountry}${APPLICATION_TYPE_LABELS[applicationType]}申请，请选择其他国家或申请类型`);
+      return;
+    }
 
     const data: CreateProjectRequest = {
       name,
@@ -63,15 +102,21 @@ export default function CreateProject() {
     setLoading(true);
     try {
       const project = await projectService.createProject(data);
+      if (!project || !project.id) {
+        throw new Error('创建项目失败');
+      }
+      toast.success('项目创建成功！');
       navigate(`/projects/${project.id}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to create project:', error);
+      toast.error(error.message || '创建项目失败，请稍后重试');
     } finally {
       setLoading(false);
     }
   };
 
   const canProceed = step === 1 ? name.trim() : step === 2 ? applicationType : targetCountry;
+  const availableCountries = getAvailableCountries();
 
   return (
     <div className="max-w-3xl mx-auto animate-[fadeIn_0.5s_ease-out]">
@@ -119,7 +164,7 @@ export default function CreateProject() {
 
         <div className="p-6">
           {step === 1 && (
-            <div className="space-y-4">
+            <div className="space-y-4 animate-[fadeInUp_0.3s_ease-out]">
               <label className="block">
                 <span className="text-sm font-medium text-slate-700">项目名称</span>
                 <input
@@ -137,13 +182,16 @@ export default function CreateProject() {
           )}
 
           {step === 2 && (
-            <div className="space-y-4">
+            <div className="space-y-4 animate-[fadeInUp_0.3s_ease-out]">
               <span className="text-sm font-medium text-slate-700 block">申请类型</span>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {APPLICATION_TYPES.map((type) => (
                   <button
                     key={type.value}
-                    onClick={() => setApplicationType(type.value)}
+                    onClick={() => {
+                      setApplicationType(type.value);
+                      setTargetCountry('');
+                    }}
                     className={`p-6 rounded-xl border-2 transition-all text-left ${
                       applicationType === type.value
                         ? 'border-[#d4a855] bg-[#d4a855]/5'
@@ -170,28 +218,77 @@ export default function CreateProject() {
           )}
 
           {step === 3 && (
-            <div className="space-y-6">
+            <div className="space-y-6 animate-[fadeInUp_0.3s_ease-out]">
               <div>
-                <span className="text-sm font-medium text-slate-700 block mb-2">目标国家</span>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-slate-700 block">目标国家</span>
+                  {templatesLoading && (
+                    <span className="text-xs text-slate-400 flex items-center gap-1">
+                      <Loader2 size={12} className="animate-spin" />
+                      加载可用国家...
+                    </span>
+                  )}
+                </div>
+
+                {applicationType && availableCountries.length === 0 && (
+                  <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg flex items-start gap-2">
+                    <AlertTriangle size={16} className="text-orange-500 mt-0.5 flex-shrink-0" />
+                    <p className="text-sm text-orange-700">
+                      该申请类型暂无可选国家，请返回上一步选择其他申请类型
+                    </p>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                  {COUNTRIES.map((country) => (
-                    <button
-                      key={country}
-                      onClick={() => setTargetCountry(country)}
-                      className={`px-4 py-3 rounded-xl border-2 font-medium transition-all ${
-                        targetCountry === country
-                          ? 'border-[#d4a855] bg-[#d4a855]/5 text-[#1e3a5f]'
-                          : 'border-slate-200 hover:border-slate-300 text-slate-600'
-                      }`}
-                    >
-                      {country}
-                    </button>
-                  ))}
+                  {['加拿大', '美国', '澳大利亚', '新西兰', '英国'].map((country) => {
+                    const isAvailable = availableCountries.includes(country);
+                    const isSelected = targetCountry === country;
+                    return (
+                      <button
+                        key={country}
+                        onClick={() => isAvailable && setTargetCountry(country)}
+                        disabled={!isAvailable}
+                        className={`px-4 py-3 rounded-xl border-2 font-medium transition-all relative ${
+                          isSelected
+                            ? 'border-[#d4a855] bg-[#d4a855]/5 text-[#1e3a5f]'
+                            : isAvailable
+                            ? 'border-slate-200 hover:border-slate-300 text-slate-600'
+                            : 'border-slate-100 bg-slate-50 text-slate-300 cursor-not-allowed'
+                        }`}
+                      >
+                        {country}
+                        {!isAvailable && (
+                          <span className="absolute -top-2 -right-2 text-[10px] px-1.5 py-0.5 bg-slate-200 text-slate-500 rounded">
+                            暂未开放
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              {templatePreview.length > 0 && (
-                <div className="bg-slate-50 rounded-xl p-6">
+              {targetCountry && hasTemplate === false && (
+                <div className="p-4 bg-orange-50 border border-orange-200 rounded-xl flex items-start gap-3 animate-[fadeIn_0.3s_ease-out]">
+                  <AlertTriangle size={20} className="text-orange-500 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <h4 className="font-medium text-orange-800 mb-1">
+                      该组合暂未配置材料模板
+                    </h4>
+                    <p className="text-sm text-orange-700">
+                      目前系统暂未配置 <strong>{targetCountry}{APPLICATION_TYPE_LABELS[applicationType as ApplicationType]}</strong> 的标准材料清单。
+                      您可以：
+                    </p>
+                    <ul className="text-sm text-orange-700 mt-2 space-y-1 list-disc list-inside">
+                      <li>选择其他已支持的国家创建项目</li>
+                      <li>联系移民顾问为您定制该类型的材料清单</li>
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {targetCountry && hasTemplate === true && templatePreview.length > 0 && (
+                <div className="bg-slate-50 rounded-xl p-6 animate-[fadeIn_0.3s_ease-out]">
                   <div className="flex items-center gap-2 mb-4">
                     <FileText size={20} className="text-[#d4a855]" />
                     <h3 className="font-medium text-slate-800">材料清单预览</h3>
@@ -224,6 +321,13 @@ export default function CreateProject() {
                   </div>
                 </div>
               )}
+
+              {targetCountry && templatesLoading && (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 size={24} className="text-[#d4a855] animate-spin mr-2" />
+                  <span className="text-slate-500">检查模板配置...</span>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -247,7 +351,7 @@ export default function CreateProject() {
           ) : (
             <button
               onClick={handleSubmit}
-              disabled={!canProceed || loading}
+              disabled={!canProceed || loading || templatesLoading || hasTemplate === false}
               className="px-6 py-2.5 bg-[#d4a855] text-white rounded-xl font-medium hover:bg-[#c49845] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               {loading ? (

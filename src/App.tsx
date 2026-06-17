@@ -5,7 +5,9 @@ import CreateProject from "@/pages/CreateProject";
 import ProjectOverview from "@/pages/ProjectOverview";
 import TemplateSettings from "@/pages/TemplateSettings";
 import Layout from "@/components/Layout";
+import Toast from "@/components/Toast";
 import { useAuthStore } from "@/store/useAuthStore";
+import { useToastStore } from "@/store/useToastStore";
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((state) => state.user);
@@ -33,11 +35,13 @@ function ConsultantRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-export default function App() {
+function AppContent() {
   const user = useAuthStore((state) => state.user);
+  const toasts = useToastStore((state) => state.toasts);
+  const removeToast = useToastStore((state) => state.removeToast);
 
   return (
-    <Router>
+    <>
       <Routes>
         <Route
           path="/login"
@@ -89,6 +93,15 @@ export default function App() {
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <Toast toasts={toasts} onRemove={removeToast} />
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <Router>
+      <AppContent />
     </Router>
   );
 }

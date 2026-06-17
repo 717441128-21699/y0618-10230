@@ -14,6 +14,7 @@ import {
   Plus,
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
+import { useToastStore } from '../store/useToastStore';
 import { projectService } from '../services/api';
 import {
   Project,
@@ -43,6 +44,7 @@ export default function ProjectOverview() {
   const [selectedDocument, setSelectedDocument] = useState<DocumentItem | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const { user } = useAuthStore();
+  const toast = useToastStore();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -113,6 +115,21 @@ export default function ProjectOverview() {
       .slice(0, 5);
   };
 
+  const getUrgentMilestones = () => {
+    if (!project) return [];
+    return project.milestones
+      .filter(
+        (m) =>
+          !m.completed &&
+          m.reminder &&
+          m.date &&
+          (isDeadlineNear(m.date) || isDeadlineOverdue(m.date))
+      )
+      .sort((a, b) => {
+        return new Date(a.date).getTime() - new Date(b.date).getTime();
+      });
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -126,6 +143,7 @@ export default function ProjectOverview() {
   }
 
   const upcomingDeadlines = getUpcomingDeadlines();
+  const urgentMilestones = getUrgentMilestones();
 
   return (
     <div className="animate-[fadeIn_0.5s_ease-out]">
@@ -230,36 +248,88 @@ export default function ProjectOverview() {
               })}
             </div>
 
-            {upcomingDeadlines.length > 0 && (
-              <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
-                <div className="p-4 border-b border-slate-100 flex items-center gap-2">
-                  <AlertTriangle size={20} className="text-orange-500" />
-                  <h3 className="font-medium text-slate-800">即将到期的材料</h3>
-                </div>
-                <div className="divide-y divide-slate-100">
-                  {upcomingDeadlines.map((doc) => {
-                    const days = getDaysUntilDeadline(doc.deadline);
-                    const overdue = isDeadlineOverdue(doc.deadline);
-                    return (
-                      <div
-                        key={doc.id}
-                        className="p-4 flex items-center justify-between hover:bg-slate-50 cursor-pointer"
-                        onClick={() => setSelectedDocument(doc)}
-                      >
-                        <div>
-                          <p className="font-medium text-slate-800">{doc.name}</p>
-                          <p className="text-sm text-slate-500">{getCategoryLabel(doc.category)}</p>
-                        </div>
-                        <div className={`flex items-center gap-1 text-sm ${
-                          overdue ? 'text-red-500' : 'text-orange-500'
-                        }`}>
-                          <Clock size={14} />
-                          {overdue ? `已逾期 ${Math.abs(days!)} 天` : days === 0 ? '今天截止' : `还剩 ${days} 天`}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+            {(upcomingDeadlines.length > 0 || urgentMilestones.length > 0) && (
+              <div className="space-y-4">
+                {upcomingDeadlines.length > 0 && (
+                  <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+                    <div className="p-4 border-b border-slate-100 flex items-center gap-2">
+                      <AlertTriangle size={20} className="text-orange-500" />
+                      <h3 className="font-medium text-slate-800">即将到期的材料</h3>
+                      <span className="ml-auto px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-medium rounded-full">
+                        {upcomingDeadlines.length} 项
+                      </span>
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                      {upcomingDeadlines.map((doc) => {
+                        const days = getDaysUntilDeadline(doc.deadline);
+                        const overdue = isDeadlineOverdue(doc.deadline);
+                        return (
+                          <div
+                            key={doc.id}
+                            className="p-4 flex items-center justify-between hover:bg-slate-50 cursor-pointer"
+                            onClick={() => setSelectedDocument(doc)}
+                          >
+                            <div>
+                              <p className="font-medium text-slate-800">{doc.name}</p>
+                              <p className="text-sm text-slate-500">{getCategoryLabel(doc.category)}</p>
+                            </div>
+                            <div className={`flex items-center gap-1 text-sm ${
+                              overdue ? 'text-red-500' : 'text-orange-500'
+                            }`}>
+                              <Clock size={14} />
+                              {overdue ? `已逾期 ${Math.abs(days!)} 天` : days === 0 ? '今天截止' : `还剩 ${days} 天`}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {urgentMilestones.length > 0 && (
+                  <div className="bg-white rounded-xl border-2 border-purple-100 overflow-hidden shadow-sm shadow-purple-50">
+                    <div className="p-4 border-b border-purple-100 flex items-center gap-2 bg-purple-50/50">
+                      <Calendar size={20} className="text-purple-500" />
+                      <h3 className="font-medium text-slate-800">重要节点提醒</h3>
+                      <span className="ml-auto px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded-full">
+                        {urgentMilestones.length} 项
+                      </span>
+                    </div>
+                    <div className="divide-y divide-purple-50">
+                      {urgentMilestones.map((milestone) => {
+                        const days = getDaysUntilDeadline(milestone.date);
+                        const overdue = isDeadlineOverdue(milestone.date);
+                        return (
+                          <div
+                            key={milestone.id}
+                            className="p-4 flex items-center justify-between hover:bg-purple-50/30 cursor-pointer"
+                            onClick={() => setActiveTab('progress')}
+                          >
+                            <div>
+                              <p className="font-medium text-slate-800 flex items-center gap-2">
+                                {milestone.title}
+                                {overdue && (
+                                  <span className="px-1.5 py-0.5 bg-red-100 text-red-600 text-[10px] font-medium rounded">
+                                    已逾期
+                                  </span>
+                                )}
+                              </p>
+                              {milestone.description && (
+                                <p className="text-sm text-slate-500 mt-0.5">{milestone.description}</p>
+                              )}
+                            </div>
+                            <div className={`flex items-center gap-1 text-sm ${
+                              overdue ? 'text-red-500' : 'text-purple-600'
+                            }`}>
+                              <Clock size={14} />
+                              {overdue ? `逾期 ${Math.abs(days!)} 天` : days === 0 ? '今天' : `${days} 天后`}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -545,15 +615,18 @@ function SubmissionForm({
   const [editing, setEditing] = useState(false);
   const [formData, setFormData] = useState<SubmissionInfo>(submission);
   const [loading, setLoading] = useState(false);
+  const toast = useToastStore();
 
   const handleSubmit = async () => {
     setLoading(true);
     try {
       await projectService.updateSubmission(projectId, formData);
       setEditing(false);
+      toast.success('递交信息保存成功！');
       onUpdate();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to update submission:', error);
+      toast.error(error.message || '保存递交信息失败，请稍后重试');
     } finally {
       setLoading(false);
     }
@@ -710,6 +783,7 @@ function MilestonesSection({
     date: '',
     reminder: true,
   });
+  const toast = useToastStore();
 
   const handleAdd = async () => {
     if (!formData.title || !formData.date) return;
@@ -718,9 +792,11 @@ function MilestonesSection({
       await projectService.addMilestone(projectId, formData);
       setFormData({ title: '', description: '', date: '', reminder: true });
       setShowAdd(false);
+      toast.success('申请节点添加成功！');
       onUpdate();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to add milestone:', error);
+      toast.error(error.message || '添加节点失败，请稍后重试');
     } finally {
       setLoading(false);
     }
@@ -731,9 +807,11 @@ function MilestonesSection({
       await projectService.updateMilestone(projectId, milestone.id, {
         completed: !milestone.completed,
       });
+      toast.success(!milestone.completed ? `${milestone.title} 已标记完成！` : `${milestone.title} 已取消完成标记`);
       onUpdate();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to update milestone:', error);
+      toast.error(error.message || '更新节点状态失败');
     }
   };
 

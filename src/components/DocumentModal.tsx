@@ -27,6 +27,7 @@ import {
   isDeadlineOverdue,
 } from '../utils/helpers';
 import { projectService } from '../services/api';
+import { useToastStore } from '../store/useToastStore';
 
 interface DocumentModalProps {
   document: DocumentItem;
@@ -51,6 +52,7 @@ export default function DocumentModal({
   const [uploadNote, setUploadNote] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const deadlineDays = getDaysUntilDeadline(document.deadline);
+  const toast = useToastStore();
 
   const handleStatusChange = async () => {
     try {
@@ -59,8 +61,10 @@ export default function DocumentModal({
         deadline: newDeadline || undefined,
       });
       onUpdate(updated);
-    } catch (error) {
+      toast.success('材料状态更新成功！');
+    } catch (error: any) {
       console.error('Failed to update document:', error);
+      toast.error(error.message || '更新材料状态失败，请稍后重试');
     }
   };
 
@@ -80,8 +84,13 @@ export default function DocumentModal({
       );
       onUpdate(updated);
       setUploadNote('');
-    } catch (error) {
+      toast.success(`${file.name} 上传成功！`);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (error: any) {
       console.error('Failed to upload file:', error);
+      toast.error(error.message || '文件上传失败，请检查文件大小和格式');
     } finally {
       setUploading(false);
     }
@@ -103,8 +112,10 @@ export default function DocumentModal({
         onUpdate(updatedDoc);
       }
       setNewComment('');
-    } catch (error) {
+      toast.success(user.role === 'consultant' ? '意见已发送给客户' : '评论已添加');
+    } catch (error: any) {
       console.error('Failed to add comment:', error);
+      toast.error(error.message || '添加评论失败，请稍后重试');
     }
   };
 
