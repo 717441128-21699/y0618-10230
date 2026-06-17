@@ -1,0 +1,87 @@
+[
+  {
+    "type": "work_visa",
+    "country": "加拿大",
+    "documents": [
+      { "id": "t1", "name": "有效护照", "category": "identity", "description": "护照有效期至少6个月", "required": true },
+      { "id": "t2", "name": "工作offer", "category": "work", "description": "加拿大雇主提供的正式工作邀请", "required": true },
+      { "id": "t3", "name": "学历证明", "category": "education", "description": "最高学历证书及成绩单", "required": true },
+      { "id": "t4", "name": "工作经历证明", "category": "work", "description": "过往工作推荐信", "required": true },
+      { "id": "t5", "name": "语言成绩", "category": "education", "description": "雅思/TEF成绩", "required": true },
+      { "id": "t6", "name": "无犯罪记录证明", "category": "other", "description": "近10年居住国无犯罪记录", "required": true },
+      { "id": "t7", "name": "体检报告", "category": "health", "description": "移民局指定医院体检", "required": true },
+      { "id": "t8", "name": "资金证明", "category": "finance", "description": "足够的安家费用证明", "required": false }
+    ]
+  },
+  {
+    "type": "permanent_residence",
+    "country": "加拿大",
+    "documents": [
+      { "id": "p1", "name": "有效护照", "category": "identity", "description": "所有家庭成员护照", "required": true },
+      { "id": "p2", "name": "出生证明", "category": "identity", "description": "主申请人及家属出生公证", "required": true },
+      { "id": "p3", "name": "结婚证/单身证明", "category": "identity", "description": "婚姻状况证明", "required": true },
+      { "id": "p4", "name": "学历认证", "category": "education", "description": "ECA学历认证报告", "required": true },
+      { "id": "p5", "name": "语言成绩", "category": "education", "description": "CLB 7以上", "required": true },
+      { "id": "p6", "name": "工作经验证明", "category": "work", "description": "近10年工作经验", "required": true },
+      { "id": "p7", "name": "无犯罪记录", "category": "other", "description": "所有年满18岁家庭成员", "required": true },
+      { "id": "p8", "name": "体检报告", "category": "health", "description": "所有家庭成员", "required": true },
+      { "id": "p9", "name": "资金证明", "category": "finance", "description": "满足最低安家费要求", "required": true },
+      { "id": "p10", "name": "照片", "category": "other", "description": "符合规格的电子照片", "required": true }
+    ]
+  },
+  {
+    "type": "citizenship",
+    "country": "加拿大",
+    "documents": [
+      { "id": "c1", "name": "永久居民卡", "category": "identity", "description": "正反面复印件", "required": true },
+      { "id": "c2", "name": "居住证明", "category": "other", "description": "过去5年住满3年证明", "required": true },
+      { "id": "c3", "name": "护照", "category": "identity", "description": "所有出入境盖章页", "required": true },
+      { "id": "c4", "name": "语言成绩", "category": "education", "description": "CLB 4以上", "required": true },
+      { "id": "c5", "name": "纳税证明", "category": "finance", "description": "过去3年报税记录", "required": true },
+      { "id": "c6", "name": "入籍考试", "category": "other", "description": "考试通过证明", "required": false }
+    ]
+  },
+  {
+    "type": "work_visa",
+    "country": "美国",
+    "documents": [
+      { "id": "us_w1", "name": "有效护照", "category": "identity", "description": "护照有效期至少6个月", "required": true },
+      { "id": "us_w2", "name": "I-129申请表", "category": "other", "description": "雇主提交的工作签证申请", "required": true },
+      { "id": "us_w3", "name": "LCA劳工认证", "category": "work", "description": "美国劳工部批准的劳工申请", "required": true },
+      { "id": "us_w4", "name": "学历证明", "category": "education", "description": "学位证书及成绩单", "required": true },
+      { "id": "us_w5", "name": "工作经历证明", "category": "work", "description": "相关工作经验证明", "required": true },
+      { "id": "us_w6", "name": "无犯罪记录", "category": "other", "description": "无犯罪记录公证", "required": true },
+      { "id": "us_w7", "name": "照片", "category": "other", "description": "符合美国签证要求的照片", "required": true }
+    ]
+  },
+  {
+    "type": "permanent_residence",
+    "country": "美国",
+    "documents": [
+      { "id": "us_p1", "name": "I-140移民申请", "category": "other", "description": "职业移民申请", "required": true },
+      { "id": "us_p2", "name": "PERM劳工证", "category": "work", "description": "永久劳工认证", "required": true },
+      { "id": "us_p3", "name": "学历评估", "category": "education", "description": "美国学历同等性评估", "required": true },
+      { "id": "us_p4", "name": "工作经验证明", "category": "work", "description": "详细的工作经历和推荐信", "required": true },
+      { "id": "us_p5", "name": "出生证明", "category": "identity", "description": "出生公证", "required": true },
+      { "id": "us_p6", "name": "婚姻证明", "category": "identity", "description": "结婚证/单身公证", "required": true },
+      { "id": "us_p7", "name": "无犯罪记录", "category": "other", "description": "FBI背景调查", "required": true },
+      { "id": "us_p8", "name": "体检报告", "category": "health", "description": "移民体检", "required": true },
+      { "id": "us_p9", "name": "资金证明", "category": "finance", "description": "经济担保书I-864", "required": true }
+    ]
+  },
+  {
+    "type": "work_visa",
+    "country": "澳大利亚",
+    "documents": [
+      { "id": "au_w1", "name": "有效护照", "category": "identity", "description": "护照有效期至少6个月", "required": true },
+      { "id": "au_w2", "name": "担保资格", "category": "work", "description": "雇主担保资格批准", "required": true },
+      { "id": "au_w3", "name": "提名申请", "category": "work", "description": "职位提名批准", "required": true },
+      { "id": "au_w4", "name": "职业评估", "category": "education", "description": "相关职业机构评估", "required": true },
+      { "id": "au_w5", "name": "语言成绩", "category": "education", "description": "雅思4个6以上", "required": true },
+      { "id": "au_w6", "name": "工作经验", "category": "work", "description": "相关工作经验证明", "required": true },
+      { "id": "au_w7", "name": "无犯罪记录", "category": "other", "description": "AFP和海外无犯罪记录", "required": true },
+      { "id": "au_w8", "name": "体检报告", "category": "health", "description": "移民体检", "required": true },
+      { "id": "au_w9", "name": "保险证明", "category": "health", "description": "海外访客保险", "required": true }
+    ]
+  }
+]

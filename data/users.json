@@ -1,0 +1,17 @@
+[
+  {
+    "id": "consultant_1",
+    "email": "consultant@example.com",
+    "password": "123456",
+    "name": "张顾问",
+    "role": "consultant"
+  },
+  {
+    "id": "client_1",
+    "email": "client@example.com",
+    "password": "123456",
+    "name": "李客户",
+    "role": "client",
+    "consultantId": "consultant_1"
+  }
+]
