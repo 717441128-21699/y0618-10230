@@ -146,6 +146,37 @@ export interface AddMilestoneRequest {
   reminder: boolean;
 }
 
+export interface BatchUpdateDocumentsRequest {
+  documentIds: string[];
+  status?: DocumentStatus;
+  deadline?: string;
+}
+
+export interface SetCurrentVersionRequest {
+  versionId: string;
+}
+
+export type ActivityType =
+  | 'document_uploaded'
+  | 'document_status_changed'
+  | 'document_deadline_set'
+  | 'comment_added'
+  | 'submission_updated'
+  | 'milestone_added'
+  | 'milestone_completed'
+  | 'project_created'
+  | 'version_restored';
+
+export interface Activity {
+  id: string;
+  type: ActivityType;
+  description: string;
+  timestamp: string;
+  actorName: string;
+  actorRole: UserRole;
+  metadata?: Record<string, any>;
+}
+
 export const APPLICATION_TYPE_LABELS: Record<ApplicationType, string> = {
   work_visa: '工作签证',
   permanent_residence: '永久居留',

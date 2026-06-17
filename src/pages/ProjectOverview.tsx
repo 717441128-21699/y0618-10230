@@ -12,6 +12,11 @@ import {
   FileCheck,
   Send,
   Plus,
+  Square,
+  CheckSquare,
+  ListTodo,
+  History,
+  RotateCcw,
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useToastStore } from '../store/useToastStore';
@@ -22,10 +27,13 @@ import {
   SubmissionInfo,
   Milestone,
   DOCUMENT_STATUS_LABELS,
+  DocumentStatus,
+  Activity,
 } from '../../shared/types';
 import ProgressRing from '../components/ProgressRing';
 import StatusBadge from '../components/StatusBadge';
 import DocumentModal from '../components/DocumentModal';
+import ActivityTimeline from '../components/ActivityTimeline';
 import {
   formatDate,
   formatDateTime,
@@ -43,9 +51,16 @@ export default function ProjectOverview() {
   const [activeTab, setActiveTab] = useState<'overview' | 'documents' | 'progress'>('overview');
   const [selectedDocument, setSelectedDocument] = useState<DocumentItem | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
+  const [showBatchPanel, setShowBatchPanel] = useState(false);
+  const [batchStatus, setBatchStatus] = useState<DocumentStatus | ''>('');
+  const [batchDeadline, setBatchDeadline] = useState('');
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [activities, setActivities] = useState<Activity[]>([]);
   const { user } = useAuthStore();
   const toast = useToastStore();
   const navigate = useNavigate();
+  const isConsultant = user?.role === 'consultant';
 
   useEffect(() => {
     if (id) {
@@ -56,12 +71,17 @@ export default function ProjectOverview() {
   const loadProject = async () => {
     if (!id) return;
     try {
-      const data = await projectService.getProject(id);
+      const [data, activityData] = await Promise.all([
+        projectService.getProject(id),
+        projectService.getActivities(id).catch(() => []),
+      ]);
       setProject(data);
+      setActivities(activityData);
       const categories = new Set(data.documents.map((d) => d.category));
       setExpandedCategories(categories);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load project:', error);
+      toast.error(error.message || '加载项目失败');
     } finally {
       setLoading(false);
     }
@@ -89,6 +109,70 @@ export default function ProjectOverview() {
       newExpanded.add(category);
     }
     setExpandedCategories(newExpanded);
+  };
+
+  const toggleDocSelection = (docId: string) => {
+    const newSelected = new Set(selectedDocIds);
+    if (newSelected.has(docId)) {
+      newSelected.delete(docId);
+    } else {
+      newSelected.add(docId);
+    }
+    setSelectedDocIds(newSelected);
+  };
+
+  const toggleCategorySelectAll = (docs: DocumentItem[]) => {
+    const newSelected = new Set(selectedDocIds);
+    const allSelected = docs.every((d) => newSelected.has(d.id));
+    if (allSelected) {
+      docs.forEach((d) => newSelected.delete(d.id));
+    } else {
+      docs.forEach((d) => newSelected.add(d.id));
+    }
+    setSelectedDocIds(newSelected);
+  };
+
+  const clearSelection = () => {
+    setSelectedDocIds(new Set());
+    setBatchStatus('');
+    setBatchDeadline('');
+    setShowBatchPanel(false);
+  };
+
+  const handleBatchUpdate = async () => {
+    if (!project || selectedDocIds.size === 0) return;
+    if (!batchStatus && !batchDeadline) {
+      toast.warning('请选择要批量修改的内容');
+      return;
+    }
+
+    setBatchLoading(true);
+    try {
+      const result = await projectService.batchUpdateDocuments(project.id, {
+        documentIds: Array.from(selectedDocIds),
+        ...(batchStatus ? { status: batchStatus } : {}),
+        ...(batchDeadline ? { deadline: batchDeadline } : {}),
+      });
+
+      if (result.success) {
+        const updatedDocMap = new Map(result.documents.map((d) => [d.id, d]));
+        const updatedDocuments = project.documents.map((d) =>
+          updatedDocMap.has(d.id) ? updatedDocMap.get(d.id)! : d
+        );
+        setProject({
+          ...project,
+          documents: updatedDocuments,
+          completionPercentage: result.completionPercentage,
+        });
+        toast.success(`已成功更新 ${result.updatedCount} 项材料`);
+        clearSelection();
+      }
+    } catch (error: any) {
+      console.error('Batch update failed:', error);
+      toast.error(error.message || '批量操作失败');
+    } finally {
+      setBatchLoading(false);
+    }
   };
 
   const groupedDocuments = project?.documents.reduce((acc, doc) => {
@@ -389,44 +473,97 @@ export default function ProjectOverview() {
               </div>
             </div>
 
-            <div className="bg-white rounded-xl border border-slate-100 p-4">
-              <h3 className="font-medium text-slate-800 mb-4">最近更新</h3>
-              <div className="space-y-3">
-                {[...project.documents]
-                  .filter((d) => d.currentVersion)
-                  .sort((a, b) => {
-                    if (!a.currentVersion || !b.currentVersion) return 0;
-                    return new Date(b.currentVersion.uploadDate).getTime() - new Date(a.currentVersion.uploadDate).getTime();
-                  })
-                  .slice(0, 5)
-                  .map((doc) => (
-                    <div key={doc.id} className="flex items-start gap-3 text-sm">
-                      <div className="w-2 h-2 rounded-full bg-[#d4a855] mt-1.5 flex-shrink-0" />
-                      <div>
-                        <p className="text-slate-700">{doc.name} 已更新</p>
-                        <p className="text-slate-400 text-xs">
-                          {doc.currentVersion && formatDateTime(doc.currentVersion.uploadDate)}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                {project.documents.filter((d) => d.currentVersion).length === 0 && (
-                  <p className="text-sm text-slate-400 text-center py-4">暂无更新记录</p>
-                )}
-              </div>
-            </div>
+            <ActivityTimeline activities={activities} loading={loading} />
           </div>
         </div>
       )}
 
       {activeTab === 'documents' && (
         <div className="space-y-4">
+          {selectedDocIds.size > 0 && (
+            <div className="bg-[#1e3a5f] rounded-xl p-4 text-white sticky top-0 z-10 shadow-lg animate-[fadeInDown_0.3s_ease-out]">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <ListTodo size={20} />
+                  <span className="font-medium">已选择 {selectedDocIds.size} 项材料</span>
+                </div>
+                <div className="flex items-center gap-2 ml-auto flex-wrap">
+                  {isConsultant && (
+                    <button
+                      onClick={() => {
+                        setBatchStatus('submitted');
+                        setShowBatchPanel(true);
+                      }}
+                      className="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition-colors"
+                    >
+                      批量标记已提交
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setShowBatchPanel(!showBatchPanel)}
+                    className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm font-medium transition-colors"
+                  >
+                    {showBatchPanel ? '收起' : '更多操作'}
+                  </button>
+                  <button
+                    onClick={clearSelection}
+                    className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm transition-colors"
+                  >
+                    取消选择
+                  </button>
+                </div>
+              </div>
+
+              {showBatchPanel && (
+                <div className="mt-4 pt-4 border-t border-white/20 grid grid-cols-1 md:grid-cols-3 gap-4 items-end animate-[fadeIn_0.3s_ease-out]">
+                  <div>
+                    <label className="block text-sm text-white/80 mb-1">批量设置状态</label>
+                    <select
+                      value={batchStatus}
+                      onChange={(e) => setBatchStatus(e.target.value as DocumentStatus | '')}
+                      className="w-full px-3 py-2 rounded-lg text-slate-800 text-sm outline-none"
+                    >
+                      <option value="">不修改</option>
+                      {Object.entries(DOCUMENT_STATUS_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-white/80 mb-1">批量设置截止日期</label>
+                    <input
+                      type="date"
+                      value={batchDeadline}
+                      onChange={(e) => setBatchDeadline(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg text-slate-800 text-sm outline-none"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleBatchUpdate}
+                      disabled={batchLoading || (!batchStatus && !batchDeadline)}
+                      className="flex-1 px-4 py-2 bg-[#d4a855] hover:bg-[#c49845] text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {batchLoading ? (
+                        <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />处理中...</>
+                      ) : (
+                        '应用修改'
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {Object.entries(groupedDocuments).map(([category, docs]) => {
             const isExpanded = expandedCategories.has(category);
             const requiredDocs = docs.filter((d) => d.required);
             const completed = requiredDocs.filter(
               (d) => d.status === 'submitted' || d.status === 'notarized'
             ).length;
+            const allSelected = docs.every((d) => selectedDocIds.has(d.id));
+            const someSelected = docs.some((d) => selectedDocIds.has(d.id));
 
             return (
               <div key={category} className="bg-white rounded-xl border border-slate-100 overflow-hidden">
@@ -435,6 +572,21 @@ export default function ProjectOverview() {
                   className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors"
                 >
                   <div className="flex items-center gap-3">
+                    <div
+                      className="w-8 h-8 rounded-lg bg-[#1e3a5f]/10 text-[#1e3a5f] flex items-center justify-center transition-transform hover:bg-[#1e3a5f]/20"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleCategorySelectAll(docs);
+                      }}
+                    >
+                      {allSelected ? (
+                        <CheckSquare size={16} className="text-[#1e3a5f]" />
+                      ) : someSelected ? (
+                        <CheckSquare size={16} className="text-[#d4a855]" />
+                      ) : (
+                        <Square size={16} />
+                      )}
+                    </div>
                     <div className={`w-8 h-8 rounded-lg bg-[#1e3a5f]/10 text-[#1e3a5f] flex items-center justify-center transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
                       <Plus size={16} />
                     </div>
@@ -463,6 +615,7 @@ export default function ProjectOverview() {
                     <table className="w-full">
                       <thead className="bg-slate-50">
                         <tr>
+                          <th className="w-12 px-4 py-3"></th>
                           <th className="text-left px-4 py-3 text-xs font-medium text-slate-500 uppercase">材料名称</th>
                           <th className="text-left px-4 py-3 text-xs font-medium text-slate-500 uppercase">状态</th>
                           <th className="text-left px-4 py-3 text-xs font-medium text-slate-500 uppercase">截止日期</th>
@@ -475,13 +628,25 @@ export default function ProjectOverview() {
                           const days = getDaysUntilDeadline(doc.deadline);
                           const overdue = isDeadlineOverdue(doc.deadline);
                           const near = isDeadlineNear(doc.deadline);
+                          const isSelected = selectedDocIds.has(doc.id);
                           return (
                             <tr
                               key={doc.id}
-                              onClick={() => setSelectedDocument(doc)}
-                              className="hover:bg-slate-50 cursor-pointer transition-colors"
+                              className={`hover:bg-slate-50 cursor-pointer transition-colors ${isSelected ? 'bg-[#d4a855]/5' : ''}`}
                             >
-                              <td className="px-4 py-3">
+                              <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  onClick={() => toggleDocSelection(doc.id)}
+                                  className="p-1 hover:bg-slate-100 rounded"
+                                >
+                                  {isSelected ? (
+                                    <CheckSquare size={18} className="text-[#1e3a5f]" />
+                                  ) : (
+                                    <Square size={18} className="text-slate-400" />
+                                  )}
+                                </button>
+                              </td>
+                              <td className="px-4 py-3" onClick={() => setSelectedDocument(doc)}>
                                 <div className="flex items-center gap-2">
                                   {doc.required && (
                                     <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
@@ -492,10 +657,10 @@ export default function ProjectOverview() {
                                   </div>
                                 </div>
                               </td>
-                              <td className="px-4 py-3">
+                              <td className="px-4 py-3" onClick={() => setSelectedDocument(doc)}>
                                 <StatusBadge status={doc.status} size="sm" />
                               </td>
-                              <td className="px-4 py-3">
+                              <td className="px-4 py-3" onClick={() => setSelectedDocument(doc)}>
                                 {doc.deadline ? (
                                   <div className={`text-sm ${
                                     overdue ? 'text-red-500' : near ? 'text-orange-500' : 'text-slate-600'
@@ -508,7 +673,7 @@ export default function ProjectOverview() {
                                   <span className="text-slate-400 text-sm">未设置</span>
                                 )}
                               </td>
-                              <td className="px-4 py-3">
+                              <td className="px-4 py-3" onClick={() => setSelectedDocument(doc)}>
                                 {doc.versions.length > 0 ? (
                                   <span className="text-sm text-slate-600">
                                     V{doc.currentVersion?.version || doc.versions.length}
@@ -517,7 +682,7 @@ export default function ProjectOverview() {
                                   <span className="text-slate-400 text-sm">-</span>
                                 )}
                               </td>
-                              <td className="px-4 py-3">
+                              <td className="px-4 py-3" onClick={() => setSelectedDocument(doc)}>
                                 {doc.comments.length > 0 ? (
                                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${
                                     doc.comments.some((c) => c.authorRole === 'consultant' && !c.resolved)

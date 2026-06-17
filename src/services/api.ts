@@ -9,14 +9,25 @@ import {
   ApplicationTemplate,
   Milestone,
   Comment,
+  BatchUpdateDocumentsRequest,
+  Activity,
 } from '../../shared/types';
 
 const API_BASE = '/api';
 
+async function handleResponse<T>(response: Response): Promise<T> {
+  const data = await response.json();
+  if (!response.ok) {
+    const errorMessage = data?.error || data?.message || `请求失败 (${response.status})`;
+    throw new Error(errorMessage);
+  }
+  return data as T;
+}
+
 export const projectService = {
   getProjects: async (userId: string, role: string): Promise<(Project & { completionPercentage: number })[]> => {
     const response = await fetch(`${API_BASE}/projects?userId=${userId}&role=${role}`);
-    return response.json();
+    return handleResponse(response);
   },
 
   createProject: async (data: CreateProjectRequest): Promise<Project & { completionPercentage: number }> => {
@@ -25,12 +36,12 @@ export const projectService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return response.json();
+    return handleResponse(response);
   },
 
   getProject: async (id: string): Promise<Project & { completionPercentage: number }> => {
     const response = await fetch(`${API_BASE}/projects/${id}`);
-    return response.json();
+    return handleResponse(response);
   },
 
   updateDocument: async (
@@ -43,7 +54,19 @@ export const projectService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return response.json();
+    return handleResponse(response);
+  },
+
+  batchUpdateDocuments: async (
+    projectId: string,
+    data: BatchUpdateDocumentsRequest
+  ): Promise<{ success: boolean; updatedCount: number; documents: DocumentItem[]; completionPercentage: number }> => {
+    const response = await fetch(`${API_BASE}/projects/${projectId}/documents/batch`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
   },
 
   uploadDocument: async (
@@ -64,7 +87,19 @@ export const projectService = {
       method: 'POST',
       body: formData,
     });
-    return response.json();
+    return handleResponse(response);
+  },
+
+  setCurrentVersion: async (
+    projectId: string,
+    docId: string,
+    versionId: string
+  ): Promise<DocumentItem> => {
+    const response = await fetch(`${API_BASE}/projects/${projectId}/documents/${docId}/versions/${versionId}/set-current`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return handleResponse(response);
   },
 
   addComment: async (
@@ -77,7 +112,7 @@ export const projectService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return response.json();
+    return handleResponse(response);
   },
 
   updateSubmission: async (
@@ -89,7 +124,7 @@ export const projectService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return response.json();
+    return handleResponse(response);
   },
 
   addMilestone: async (
@@ -101,7 +136,7 @@ export const projectService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return response.json();
+    return handleResponse(response);
   },
 
   updateMilestone: async (
@@ -114,7 +149,12 @@ export const projectService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return response.json();
+    return handleResponse(response);
+  },
+
+  getActivities: async (projectId: string): Promise<Activity[]> => {
+    const response = await fetch(`${API_BASE}/projects/${projectId}/activities`);
+    return handleResponse(response);
   },
 };
 
@@ -124,7 +164,7 @@ export const templateService = {
     if (type) params.append('type', type);
     if (country) params.append('country', country);
     const response = await fetch(`${API_BASE}/templates?${params.toString()}`);
-    return response.json();
+    return handleResponse(response);
   },
 
   getCountries: async (): Promise<string[]> => {

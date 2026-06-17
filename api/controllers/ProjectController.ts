@@ -11,6 +11,9 @@ import {
   AddMilestoneRequest,
   FileVersion,
   Comment,
+  Activity,
+  BatchUpdateDocumentsRequest,
+  DOCUMENT_STATUS_LABELS,
 } from '../../shared/types/index.js';
 
 export class ProjectController {
@@ -339,11 +342,25 @@ export class ProjectController {
         return res.status(404).json({ error: '节点不存在' });
       }
 
+      const oldCompleted = projects[projectIndex].milestones[milestoneIndex].completed;
       projects[projectIndex].milestones[milestoneIndex] = {
         ...projects[projectIndex].milestones[milestoneIndex],
         ...data,
       };
       projects[projectIndex].updatedAt = new Date().toISOString();
+
+      if (data.completed !== undefined && data.completed !== oldCompleted) {
+        const milestone = projects[projectIndex].milestones[milestoneIndex];
+        addActivity(projects[projectIndex], {
+          type: data.completed ? 'milestone_completed' : 'milestone_added',
+          description: data.completed
+            ? `完成节点「${milestone.title}」`
+            : `重新开启节点「${milestone.title}」`,
+          actorName: '系统',
+          actorRole: 'consultant',
+          metadata: { milestoneId: milestone.id },
+        });
+      }
 
       FileStorageService.writeProjects(projects);
       return res.json(projects[projectIndex].milestones[milestoneIndex]);
@@ -351,6 +368,157 @@ export class ProjectController {
       console.error('Update milestone error:', error);
       return res.status(500).json({ error: '服务器错误' });
     }
+  }
+
+  static async batchUpdateDocuments(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const data: BatchUpdateDocumentsRequest = req.body;
+      const projects = FileStorageService.readProjects();
+      const projectIndex = projects.findIndex((p: Project) => p.id === id);
+
+      if (projectIndex === -1) {
+        return res.status(404).json({ error: '项目不存在' });
+      }
+
+      if (!data.documentIds || data.documentIds.length === 0) {
+        return res.status(400).json({ error: '请选择要操作的材料' });
+      }
+
+      let updatedCount = 0;
+      const updatedDocs: DocumentItem[] = [];
+
+      data.documentIds.forEach((docId) => {
+        const docIndex = projects[projectIndex].documents.findIndex(
+          (d: DocumentItem) => d.id === docId
+        );
+        if (docIndex !== -1) {
+          const updates: Partial<DocumentItem> = {};
+          if (data.status) updates.status = data.status;
+          if (data.deadline) updates.deadline = data.deadline;
+
+          projects[projectIndex].documents[docIndex] = {
+            ...projects[projectIndex].documents[docIndex],
+            ...updates,
+          };
+          updatedDocs.push(projects[projectIndex].documents[docIndex]);
+          updatedCount++;
+        }
+      });
+
+      projects[projectIndex].updatedAt = new Date().toISOString();
+
+      if (data.status) {
+        addActivity(projects[projectIndex], {
+          type: 'document_status_changed',
+          description: `批量更新 ${updatedCount} 项材料状态为「${DOCUMENT_STATUS_LABELS[data.status]}」`,
+          actorName: '系统',
+          actorRole: 'client',
+          metadata: { count: updatedCount, status: data.status },
+        });
+      }
+      if (data.deadline) {
+        addActivity(projects[projectIndex], {
+          type: 'document_deadline_set',
+          description: `批量设置 ${updatedCount} 项材料截止日期`,
+          actorName: '系统',
+          actorRole: 'client',
+          metadata: { count: updatedCount, deadline: data.deadline },
+        });
+      }
+
+      FileStorageService.writeProjects(projects);
+      return res.json({
+        success: true,
+        updatedCount,
+        documents: updatedDocs,
+        completionPercentage: calculateCompletion(projects[projectIndex]),
+      });
+    } catch (error) {
+      console.error('Batch update documents error:', error);
+      return res.status(500).json({ error: '批量操作失败，请稍后重试' });
+    }
+  }
+
+  static async setCurrentVersion(req: Request, res: Response) {
+    try {
+      const { id, docId, versionId } = req.params;
+      const projects = FileStorageService.readProjects();
+      const projectIndex = projects.findIndex((p: Project) => p.id === id);
+
+      if (projectIndex === -1) {
+        return res.status(404).json({ error: '项目不存在' });
+      }
+
+      const docIndex = projects[projectIndex].documents.findIndex(
+        (d: DocumentItem) => d.id === docId
+      );
+      if (docIndex === -1) {
+        return res.status(404).json({ error: '材料不存在' });
+      }
+
+      const targetVersion = projects[projectIndex].documents[docIndex].versions.find(
+        (v: FileVersion) => v.id === versionId
+      );
+      if (!targetVersion) {
+        return res.status(404).json({ error: '版本不存在' });
+      }
+
+      projects[projectIndex].documents[docIndex].currentVersion = targetVersion;
+      projects[projectIndex].updatedAt = new Date().toISOString();
+
+      addActivity(projects[projectIndex], {
+        type: 'version_restored',
+        description: `「${projects[projectIndex].documents[docIndex].name}」恢复至 V${targetVersion.version} 版本`,
+        actorName: targetVersion.uploaderName,
+        actorRole: 'client',
+        metadata: { docId, versionId, version: targetVersion.version },
+      });
+
+      FileStorageService.writeProjects(projects);
+      return res.json(projects[projectIndex].documents[docIndex]);
+    } catch (error) {
+      console.error('Set current version error:', error);
+      return res.status(500).json({ error: '恢复版本失败，请稍后重试' });
+    }
+  }
+
+  static async getActivities(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const projects = FileStorageService.readProjects();
+      const project = projects.find((p: Project) => p.id === id);
+
+      if (!project) {
+        return res.status(404).json({ error: '项目不存在' });
+      }
+
+      const activities: Activity[] = (project as any).activities || [];
+      const sorted = [...activities].sort(
+        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      );
+
+      return res.json(sorted.slice(0, 50));
+    } catch (error) {
+      console.error('Get activities error:', error);
+      return res.status(500).json({ error: '获取活动记录失败' });
+    }
+  }
+}
+
+function addActivity(project: Project, activity: Omit<Activity, 'id' | 'timestamp'>) {
+  const newActivity: Activity = {
+    ...activity,
+    id: uuidv4(),
+    timestamp: new Date().toISOString(),
+  };
+  const proj = project as any;
+  if (!proj.activities) {
+    proj.activities = [];
+  }
+  proj.activities.unshift(newActivity);
+  if (proj.activities.length > 200) {
+    proj.activities = proj.activities.slice(0, 200);
   }
 }
 

@@ -10,6 +10,7 @@ import {
   Calendar,
   CheckCircle,
   AlertTriangle,
+  RotateCcw,
 } from 'lucide-react';
 import {
   DocumentItem,
@@ -53,6 +54,7 @@ export default function DocumentModal({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const deadlineDays = getDaysUntilDeadline(document.deadline);
   const toast = useToastStore();
+  const [restoringVersionId, setRestoringVersionId] = useState<string | null>(null);
 
   const handleStatusChange = async () => {
     try {
@@ -93,6 +95,20 @@ export default function DocumentModal({
       toast.error(error.message || '文件上传失败，请检查文件大小和格式');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleRestoreVersion = async (versionId: string, version: number) => {
+    setRestoringVersionId(versionId);
+    try {
+      const updated = await projectService.setCurrentVersion(projectId, document.id, versionId);
+      onUpdate(updated);
+      toast.success(`已恢复至 V${version} 版本`);
+    } catch (error: any) {
+      console.error('Failed to restore version:', error);
+      toast.error(error.message || '恢复版本失败，请稍后重试');
+    } finally {
+      setRestoringVersionId(null);
     }
   };
 
@@ -311,44 +327,80 @@ export default function DocumentModal({
               ) : (
                 <div className="relative">
                   <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-slate-200" />
-                  {[...document.versions].reverse().map((version, index) => (
-                    <div key={version.id} className="relative pl-10 pb-6 last:pb-0">
-                      <div className={`absolute left-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                        index === 0 ? 'bg-[#d4a855]' : 'bg-slate-200'
-                      }`}>
-                        <span className={`text-xs font-bold ${index === 0 ? 'text-white' : 'text-slate-600'}`}>
-                          V{version.version}
-                        </span>
-                      </div>
-                      <div className={`rounded-xl p-4 ${index === 0 ? 'bg-[#d4a855]/10 border border-[#d4a855]/30' : 'bg-slate-50'}`}>
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-slate-800">{version.originalName}</span>
-                          {index === 0 && (
-                            <span className="px-2 py-0.5 bg-[#d4a855] text-white text-xs rounded-full">
-                              当前版本
+                  {[...document.versions].reverse().map((version, index) => {
+                    const isCurrent = document.currentVersion?.id === version.id;
+                    const isRestoring = restoringVersionId === version.id;
+                    return (
+                      <div key={version.id} className="relative pl-10 pb-6 last:pb-0">
+                        <div className={`absolute left-0 w-8 h-8 rounded-full flex items-center justify-center ${
+                          isCurrent ? 'bg-[#d4a855]' : 'bg-slate-200'
+                        }`}>
+                          {isRestoring ? (
+                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <span className={`text-xs font-bold ${isCurrent ? 'text-white' : 'text-slate-600'}`}>
+                              V{version.version}
                             </span>
                           )}
                         </div>
-                        <p className="text-sm text-slate-500 mt-1">
-                          {formatFileSize(version.fileSize)} · {formatDateTime(version.uploadDate)} · {version.uploaderName}
-                        </p>
-                        {version.note && (
-                          <p className="text-sm text-slate-600 mt-2 bg-white/50 rounded-lg p-2">
-                            {version.note}
-                          </p>
-                        )}
-                        <a
-                          href={`/uploads/${version.filename}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 mt-2 text-sm text-[#1e3a5f] hover:text-[#d4a855] font-medium"
-                        >
-                          <FileText size={14} />
-                          下载此版本
-                        </a>
+                        <div className={`rounded-xl p-4 ${isCurrent ? 'bg-[#d4a855]/10 border border-[#d4a855]/30' : 'bg-slate-50'}`}>
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-slate-800">{version.originalName}</span>
+                            {isCurrent && (
+                              <span className="px-2 py-0.5 bg-[#d4a855] text-white text-xs rounded-full flex items-center gap-1">
+                                <CheckCircle size={12} />
+                                当前版本
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
+                            <span className="flex items-center gap-1">
+                              <FileText size={13} />
+                              {formatFileSize(version.fileSize)}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Clock size={13} />
+                              {formatDateTime(version.uploadDate)}
+                            </span>
+                            <span className={`flex items-center gap-1 px-1.5 py-0.5 rounded ${
+                              version.uploaderId.startsWith('consultant') || user.role === 'consultant'
+                                ? 'bg-[#1e3a5f]/10 text-[#1e3a5f]'
+                                : 'bg-[#d4a855]/10 text-[#d4a855]'
+                            }`}>
+                              {version.uploaderName}
+                            </span>
+                          </div>
+                          {version.note && (
+                            <div className="mt-2 p-2.5 bg-white rounded-lg border border-slate-100">
+                              <p className="text-xs text-slate-400 mb-0.5">版本说明</p>
+                              <p className="text-sm text-slate-600">{version.note}</p>
+                            </div>
+                          )}
+                          <div className="mt-3 flex items-center gap-2 flex-wrap">
+                            <a
+                              href={`/uploads/${version.filename}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 hover:bg-slate-50 font-medium transition-colors"
+                            >
+                              <FileText size={14} />
+                              查看 / 下载
+                            </a>
+                            {!isCurrent && (
+                              <button
+                                onClick={() => handleRestoreVersion(version.id, version.version)}
+                                disabled={isRestoring}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 bg-[#1e3a5f] text-white rounded-lg text-xs hover:bg-[#2d4a6f] font-medium transition-colors disabled:opacity-50"
+                              >
+                                <RotateCcw size={13} />
+                                恢复此版本
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
