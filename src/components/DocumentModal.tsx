@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   X,
   Upload,
@@ -56,12 +56,22 @@ export default function DocumentModal({
   const toast = useToastStore();
   const [restoringVersionId, setRestoringVersionId] = useState<string | null>(null);
 
+  useEffect(() => {
+    setNewStatus(document.status);
+  }, [document.status]);
+
+  useEffect(() => {
+    setNewDeadline(document.deadline || '');
+  }, [document.deadline]);
+
+  const actor = { actorId: user.id, actorName: user.name, actorRole: user.role };
+
   const handleStatusChange = async () => {
     try {
       const updated = await projectService.updateDocument(projectId, document.id, {
         status: newStatus,
         deadline: newDeadline || undefined,
-      });
+      }, actor);
       onUpdate(updated);
       toast.success('材料状态更新成功！');
     } catch (error: any) {
@@ -80,8 +90,7 @@ export default function DocumentModal({
         projectId,
         document.id,
         file,
-        user.id,
-        user.name,
+        actor,
         uploadNote
       );
       onUpdate(updated);
@@ -101,7 +110,7 @@ export default function DocumentModal({
   const handleRestoreVersion = async (versionId: string, version: number) => {
     setRestoringVersionId(versionId);
     try {
-      const updated = await projectService.setCurrentVersion(projectId, document.id, versionId);
+      const updated = await projectService.setCurrentVersion(projectId, document.id, versionId, actor);
       onUpdate(updated);
       toast.success(`已恢复至 V${version} 版本`);
     } catch (error: any) {

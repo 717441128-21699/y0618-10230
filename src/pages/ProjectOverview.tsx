@@ -87,6 +87,16 @@ export default function ProjectOverview() {
     }
   };
 
+  const loadActivities = async () => {
+    if (!id) return;
+    try {
+      const activityData = await projectService.getActivities(id);
+      setActivities(activityData);
+    } catch (error) {
+      console.error('Failed to load activities:', error);
+    }
+  };
+
   const handleDocumentUpdate = (updatedDoc: DocumentItem) => {
     if (!project) return;
     const updatedDocuments = project.documents.map((d) =>
@@ -99,6 +109,8 @@ export default function ProjectOverview() {
     );
     updatedProject.completionPercentage = Math.round((completedDocs.length / requiredDocs.length) * 100);
     setProject(updatedProject);
+    setSelectedDocument(updatedDoc);
+    loadActivities();
   };
 
   const toggleCategory = (category: string) => {
@@ -152,7 +164,7 @@ export default function ProjectOverview() {
         documentIds: Array.from(selectedDocIds),
         ...(batchStatus ? { status: batchStatus } : {}),
         ...(batchDeadline ? { deadline: batchDeadline } : {}),
-      });
+      }, { actorId: user!.id, actorName: user!.name, actorRole: user!.role });
 
       if (result.success) {
         const updatedDocMap = new Map(result.documents.map((d) => [d.id, d]));
@@ -166,6 +178,7 @@ export default function ProjectOverview() {
         });
         toast.success(`已成功更新 ${result.updatedCount} 项材料`);
         clearSelection();
+        loadActivities();
       }
     } catch (error: any) {
       console.error('Batch update failed:', error);
@@ -711,17 +724,23 @@ export default function ProjectOverview() {
       {activeTab === 'progress' && (
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2 space-y-6">
-            <SubmissionForm
-              projectId={project.id}
-              submission={project.submission}
-              onUpdate={loadProject}
-              isConsultant={user?.role === 'consultant'}
-            />
-            <MilestonesSection
-              projectId={project.id}
-              milestones={project.milestones}
-              onUpdate={loadProject}
-            />
+            {user && (
+              <SubmissionForm
+                projectId={project.id}
+                submission={project.submission}
+                onUpdate={loadProject}
+                isConsultant={user.role === 'consultant'}
+                actor={{ actorId: user.id, actorName: user.name, actorRole: user.role }}
+              />
+            )}
+            {user && (
+              <MilestonesSection
+                projectId={project.id}
+                milestones={project.milestones}
+                onUpdate={loadProject}
+                actor={{ actorId: user.id, actorName: user.name, actorRole: user.role }}
+              />
+            )}
           </div>
           <div>
             <div className="bg-white rounded-xl border border-slate-100 p-4">
@@ -771,11 +790,13 @@ function SubmissionForm({
   submission,
   onUpdate,
   isConsultant,
+  actor,
 }: {
   projectId: string;
   submission: SubmissionInfo;
   onUpdate: () => void;
   isConsultant: boolean;
+  actor: { actorId: string; actorName: string; actorRole: 'client' | 'consultant' };
 }) {
   const [editing, setEditing] = useState(false);
   const [formData, setFormData] = useState<SubmissionInfo>(submission);
@@ -785,7 +806,7 @@ function SubmissionForm({
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      await projectService.updateSubmission(projectId, formData);
+      await projectService.updateSubmission(projectId, formData, actor);
       setEditing(false);
       toast.success('递交信息保存成功！');
       onUpdate();
@@ -935,10 +956,12 @@ function MilestonesSection({
   projectId,
   milestones,
   onUpdate,
+  actor,
 }: {
   projectId: string;
   milestones: Milestone[];
   onUpdate: () => void;
+  actor: { actorId: string; actorName: string; actorRole: 'client' | 'consultant' };
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -954,7 +977,7 @@ function MilestonesSection({
     if (!formData.title || !formData.date) return;
     setLoading(true);
     try {
-      await projectService.addMilestone(projectId, formData);
+      await projectService.addMilestone(projectId, formData, actor);
       setFormData({ title: '', description: '', date: '', reminder: true });
       setShowAdd(false);
       toast.success('申请节点添加成功！');
@@ -971,7 +994,7 @@ function MilestonesSection({
     try {
       await projectService.updateMilestone(projectId, milestone.id, {
         completed: !milestone.completed,
-      });
+      }, actor);
       toast.success(!milestone.completed ? `${milestone.title} 已标记完成！` : `${milestone.title} 已取消完成标记`);
       onUpdate();
     } catch (error: any) {

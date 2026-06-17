@@ -143,6 +143,9 @@ export class ProjectController {
     try {
       const { id, docId } = req.params;
       const data: UpdateDocumentRequest = req.body;
+      const actorId = req.body.actorId || '';
+      const actorName = req.body.actorName || '未知用户';
+      const actorRole: 'client' | 'consultant' = req.body.actorRole || 'client';
       const projects = FileStorageService.readProjects();
       const projectIndex = projects.findIndex((p: Project) => p.id === id);
 
@@ -155,11 +158,32 @@ export class ProjectController {
         return res.status(404).json({ error: '材料不存在' });
       }
 
+      const oldDoc = projects[projectIndex].documents[docIndex];
       projects[projectIndex].documents[docIndex] = {
         ...projects[projectIndex].documents[docIndex],
         ...data,
       };
       projects[projectIndex].updatedAt = new Date().toISOString();
+
+      const docName = projects[projectIndex].documents[docIndex].name;
+      if (data.status && data.status !== oldDoc.status) {
+        addActivity(projects[projectIndex], {
+          type: 'document_status_changed',
+          description: `${docName} 状态变更为「${DOCUMENT_STATUS_LABELS[data.status]}」`,
+          actorName,
+          actorRole,
+          metadata: { docId, oldStatus: oldDoc.status, newStatus: data.status },
+        });
+      }
+      if (data.deadline && data.deadline !== oldDoc.deadline) {
+        addActivity(projects[projectIndex], {
+          type: 'document_deadline_set',
+          description: `${docName} 设置截止日期为 ${data.deadline.split('T')[0]}`,
+          actorName,
+          actorRole,
+          metadata: { docId, deadline: data.deadline },
+        });
+      }
 
       FileStorageService.writeProjects(projects);
       return res.json(projects[projectIndex].documents[docIndex]);
@@ -172,7 +196,8 @@ export class ProjectController {
   static async uploadDocumentFile(req: Request, res: Response) {
     try {
       const { id, docId } = req.params;
-      const { uploaderId, uploaderName, note } = req.body;
+      const { uploaderId, uploaderName, note, uploaderRole } = req.body;
+      const role: 'client' | 'consultant' = uploaderRole || 'client';
       const file = req.file;
 
       if (!file) {
@@ -208,6 +233,15 @@ export class ProjectController {
       projects[projectIndex].documents[docIndex].currentVersion = newVersion;
       projects[projectIndex].documents[docIndex].status = 'uploaded';
       projects[projectIndex].updatedAt = new Date().toISOString();
+
+      const docName = projects[projectIndex].documents[docIndex].name;
+      addActivity(projects[projectIndex], {
+        type: 'document_uploaded',
+        description: `${docName} 上传了新版本 V${newVersion.version}（${file.originalname}）`,
+        actorName: uploaderName,
+        actorRole: role,
+        metadata: { docId, versionId: newVersion.id, version: newVersion.version },
+      });
 
       FileStorageService.writeProjects(projects);
       return res.json(projects[projectIndex].documents[docIndex]);
@@ -280,6 +314,8 @@ export class ProjectController {
     try {
       const { id } = req.params;
       const data: UpdateSubmissionRequest = req.body;
+      const actorName = req.body.actorName || '未知用户';
+      const actorRole: 'client' | 'consultant' = req.body.actorRole || 'client';
       const projects = FileStorageService.readProjects();
       const projectIndex = projects.findIndex((p: Project) => p.id === id);
 
@@ -287,8 +323,22 @@ export class ProjectController {
         return res.status(404).json({ error: '项目不存在' });
       }
 
+      const wasSubmitted = projects[projectIndex].submission.submitted;
       projects[projectIndex].submission = data;
       projects[projectIndex].updatedAt = new Date().toISOString();
+
+      const description = data.submitted && !wasSubmitted
+        ? `申请已递交${data.applicationNumber ? `，申请编号：${data.applicationNumber}` : ''}`
+        : wasSubmitted && !data.submitted
+        ? '取消递交状态'
+        : '更新了递交信息';
+      addActivity(projects[projectIndex], {
+        type: 'submission_updated',
+        description,
+        actorName,
+        actorRole,
+        metadata: { submitted: data.submitted, applicationNumber: data.applicationNumber },
+      });
 
       FileStorageService.writeProjects(projects);
       return res.json(projects[projectIndex].submission);
@@ -302,6 +352,8 @@ export class ProjectController {
     try {
       const { id } = req.params;
       const data: AddMilestoneRequest = req.body;
+      const actorName = req.body.actorName || '未知用户';
+      const actorRole: 'client' | 'consultant' = req.body.actorRole || 'client';
       const projects = FileStorageService.readProjects();
       const projectIndex = projects.findIndex((p: Project) => p.id === id);
 
@@ -309,12 +361,21 @@ export class ProjectController {
         return res.status(404).json({ error: '项目不存在' });
       }
 
-      projects[projectIndex].milestones.push({
+      const newMilestone = {
         id: uuidv4(),
         ...data,
         completed: false,
-      });
+      };
+      projects[projectIndex].milestones.push(newMilestone);
       projects[projectIndex].updatedAt = new Date().toISOString();
+
+      addActivity(projects[projectIndex], {
+        type: 'milestone_added',
+        description: `新增申请节点「${data.title}」`,
+        actorName,
+        actorRole,
+        metadata: { milestoneId: newMilestone.id, title: data.title },
+      });
 
       FileStorageService.writeProjects(projects);
       return res.json(projects[projectIndex].milestones);
@@ -328,6 +389,8 @@ export class ProjectController {
     try {
       const { id, milestoneId } = req.params;
       const data = req.body;
+      const actorName = req.body.actorName || '未知用户';
+      const actorRole: 'client' | 'consultant' = req.body.actorRole || 'client';
       const projects = FileStorageService.readProjects();
       const projectIndex = projects.findIndex((p: Project) => p.id === id);
 
@@ -356,8 +419,8 @@ export class ProjectController {
           description: data.completed
             ? `完成节点「${milestone.title}」`
             : `重新开启节点「${milestone.title}」`,
-          actorName: '系统',
-          actorRole: 'consultant',
+          actorName,
+          actorRole,
           metadata: { milestoneId: milestone.id },
         });
       }
@@ -374,6 +437,8 @@ export class ProjectController {
     try {
       const { id } = req.params;
       const data: BatchUpdateDocumentsRequest = req.body;
+      const actorName = req.body.actorName || '未知用户';
+      const actorRole: 'client' | 'consultant' = req.body.actorRole || 'client';
       const projects = FileStorageService.readProjects();
       const projectIndex = projects.findIndex((p: Project) => p.id === id);
 
@@ -412,17 +477,17 @@ export class ProjectController {
         addActivity(projects[projectIndex], {
           type: 'document_status_changed',
           description: `批量更新 ${updatedCount} 项材料状态为「${DOCUMENT_STATUS_LABELS[data.status]}」`,
-          actorName: '系统',
-          actorRole: 'client',
+          actorName,
+          actorRole,
           metadata: { count: updatedCount, status: data.status },
         });
       }
       if (data.deadline) {
         addActivity(projects[projectIndex], {
           type: 'document_deadline_set',
-          description: `批量设置 ${updatedCount} 项材料截止日期`,
-          actorName: '系统',
-          actorRole: 'client',
+          description: `批量设置 ${updatedCount} 项材料截止日期为 ${data.deadline.split('T')[0]}`,
+          actorName,
+          actorRole,
           metadata: { count: updatedCount, deadline: data.deadline },
         });
       }
@@ -443,6 +508,8 @@ export class ProjectController {
   static async setCurrentVersion(req: Request, res: Response) {
     try {
       const { id, docId, versionId } = req.params;
+      const actorName = req.body.actorName || '未知用户';
+      const actorRole: 'client' | 'consultant' = req.body.actorRole || 'client';
       const projects = FileStorageService.readProjects();
       const projectIndex = projects.findIndex((p: Project) => p.id === id);
 
@@ -467,11 +534,12 @@ export class ProjectController {
       projects[projectIndex].documents[docIndex].currentVersion = targetVersion;
       projects[projectIndex].updatedAt = new Date().toISOString();
 
+      const docName = projects[projectIndex].documents[docIndex].name;
       addActivity(projects[projectIndex], {
         type: 'version_restored',
-        description: `「${projects[projectIndex].documents[docIndex].name}」恢复至 V${targetVersion.version} 版本`,
-        actorName: targetVersion.uploaderName,
-        actorRole: 'client',
+        description: `${docName} 恢复至 V${targetVersion.version} 版本`,
+        actorName,
+        actorRole,
         metadata: { docId, versionId, version: targetVersion.version },
       });
 
